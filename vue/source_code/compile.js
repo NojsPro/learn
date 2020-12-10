@@ -1,19 +1,19 @@
 /* 匹配任意字符 */
 const ncname = '[a-zA-Z_][\\w\\-\\.]*';
-/* [^\s"'<>/= 至少有一个这样的字符 */
-const singleAttrIdentifier = /([[^\s"'<>/=]+)/;
+/* [^\s"'<>/=] 至少有一个这样的字符 */
+const singleAttrIdentifier = /([^\s"'<>/=]+)/;
 /* 匹配等于号 */
 const singleAttrAssign = /(?:=)/;
 
 const singleAttrValues = [
-    /"([^"])"+/.source,
-    /'([^'])'+/.source,
+    /"([^"]*)"+/.source,
+    /'([^']*)'+/.source,
     /([^\s"'=<>`]+)/.source,
 ];
 
 /* 
 应该是找到标签上的属性
-/^\s*([[^\s"'<>/=]+)(?:\s*((?:=))\s*(?:"([^"])"+|'([^'])'+|([^\s"'=<>`]+)))?/
+/^\s*([^\s"'<>/=]+)(?:\s*((?:=))\s*(?:"([^"])"+|'([^'])'+|([^\s"'=<>`]+)))?/
 */
 const attribute = new RegExp(
     '^\\s*' + singleAttrIdentifier.source +
@@ -26,7 +26,7 @@ const qnameCapture = '((?:' + ncname + '\\:)?' + ncname + ')';
 
 /* 查找开始标签 */
 const startTagOpen = new RegExp('^<' + qnameCapture);
-/* 匹配 > 符 */
+/* 匹配 空格、回车符等字节开头，然后 > 符或者 /> 符结尾 （原来正则 /^\s*(\/?)>/） */
 const startTagClose = /^\s*(\/?)>/;
 
 /* 查找关闭标签 */
@@ -38,9 +38,7 @@ const defaultTagRE = /\{\{((?:.|\n)+?)\}\}/g;
 const forAliasRE = /(.*?)\s+(?:in|of)\s+(.*)/;
 
 let index = 0;
-let html = `<div>
-            <span>{{item}}</span>
-        </div>`;
+let html = `<div v-for="item in list" v-if="show"><span>{{item}}-{{test}}</span></div>`;
 
 /* 移去已经匹配的内容 */
 function advance(n) {
@@ -77,6 +75,7 @@ function parseHTML() {
                     }
                 }
                 */
+                console.log( "打印文本 tag", startTagMatch)
                 const element = {
                     type: 1,
                     tag: startTagMatch.tagName,
@@ -87,8 +86,8 @@ function parseHTML() {
                     children: []
                 }
                 
-                /* processIf(element);
-                processFor(element); */
+                processIf(element);
+                processFor(element);
 
                 if (!root) {
                     root = element;
@@ -101,7 +100,7 @@ function parseHTML() {
                 stack.push(element);
                 currentParent = element;
                 
-                console.log(stack, currentParent, html + 'hello', "打印文本 tag")
+                
                 continue;
             }
         } else {
@@ -114,8 +113,9 @@ function parseHTML() {
                     children: []
                 };
             }
-            console.log(parseText(text), "打印文本 text")
-            if(expression == parseText(text)) {
+            
+            expression = parseText(text) 
+            if(expression) {
                 currentParent.children.push({
                     type: 2,
                     text,
@@ -127,6 +127,7 @@ function parseHTML() {
                     text
                 })
             }
+            
 
             continue;
         }
@@ -137,15 +138,17 @@ function parseHTML() {
 
 function parseStartTag() {
     const start = html.match(startTagOpen);
+    // console.log(start, "parseStartTag startTagOpen")
     if (start) {
         const match = {
             tagName: start[1],
             attrs: [],
             start: index
         }
-
+        
         advance(start[0].length);
 
+        // console.log(html, "parseStartTag match", start)
         let end, attr;
         while (!(end = html.match(startTagClose)) && (attr = html.match(attribute))) {
             advance(attr[0].length)
@@ -153,13 +156,16 @@ function parseStartTag() {
                 name: attr[1],
                 value: attr[3]
             })
+
+            console.log("come in", match)
         }
-        // console.log(attribute)
+        // console.log(html.match(startTagClose), "parseStartTag startTagClose", html)
 
         if (end) {
             match.unarySlash = end[1];
             advance(end[0].length);
             match.end = index;
+            // console.log(match, "parseStartTag return")
 
             return match;
         }
@@ -183,7 +189,6 @@ function parseEndTag (tagName) {
 }
 
 function parseText (text) {
-    console.log(text, "parse Text 格式化文本")
     if(!defaultTagRE.test(text)) return;
 
     const tokens = [];
@@ -203,14 +208,15 @@ function parseText (text) {
     if(lastIndex < text.length) {
         tokens.push(JSON.stringify(text.slice(lastIndex)))
     }
-
+    
     return tokens.join('+');
 }
 
 /* 从le的attrsMap属性或者attrsList中获取name对应的值 */
 function getAndRemoveAttr (el, name) {
     let val;
-    if ((val = el.attrsMap[name]) != null){
+    console.log("getAndRemoveAttr 获取name对应的值", el.attrsMap[name])
+    if ((val = el.attrsMap[name])){
         const list = el.attrsList;
         for (let i = 0, l = list.length; i < l; i++){
             if (list[i].name === name){
@@ -224,12 +230,13 @@ function getAndRemoveAttr (el, name) {
 }
 
 function processFor (el) {
+
     let exp;
     if ((exp = getAndRemoveAttr(el, "v-for")) != null){
-        
-        /* const inMatch = exp.match(forAliasRE)；
+        console.log("==========process for==========")
+        const inMatch = exp.match(forAliasRE);
         el.for = inMatch[2].trim();
-        el.alias = inMatch[1].trim(); */
+        el.alias = inMatch[1].trim();
     }
     console.log(exp)
 }
@@ -237,6 +244,7 @@ function processFor (el) {
 function processIf (el) {
     const exp = getAndRemoveAttr(el, 'v-if');
     if(exp) {
+        console.log("==========process if==========")
         el.if = exp;
         if (!el.ifConditions) {
             el.ifConditions = [];
@@ -264,3 +272,5 @@ const stack = [];
 let currentParent, root;
 
 parseHTML()
+console.log("========= parse html ===========")
+console.log(root)
