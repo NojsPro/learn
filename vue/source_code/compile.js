@@ -26,6 +26,7 @@ const qnameCapture = '((?:' + ncname + '\\:)?' + ncname + ')';
 
 /* 查找开始标签 */
 const startTagOpen = new RegExp('^<' + qnameCapture);
+/* 匹配 > 符 */
 const startTagClose = /^\s*(\/?)>/;
 
 /* 查找关闭标签 */
@@ -37,7 +38,9 @@ const defaultTagRE = /\{\{((?:.|\n)+?)\}\}/g;
 const forAliasRE = /(.*?)\s+(?:in|of)\s+(.*)/;
 
 let index = 0;
-let html = '';
+let html = `<div>
+            <span>{{item}}</span>
+        </div>`;
 
 /* 移去已经匹配的内容 */
 function advance(n) {
@@ -46,6 +49,7 @@ function advance(n) {
 }
 
 function parseHTML() {
+    // console.log(html)
     while (html) {
         let textEnd = html.indexOf('<');
         if (textEnd === 0) {
@@ -82,6 +86,9 @@ function parseHTML() {
                     parent: currentParent,
                     children: []
                 }
+                
+                /* processIf(element);
+                processFor(element); */
 
                 if (!root) {
                     root = element;
@@ -93,7 +100,8 @@ function parseHTML() {
 
                 stack.push(element);
                 currentParent = element;
-
+                
+                console.log(stack, currentParent, html + 'hello', "打印文本 tag")
                 continue;
             }
         } else {
@@ -101,6 +109,12 @@ function parseHTML() {
             text = html.substring(0, textEnd);
             advance(textEnd);
             let expression;
+            if(!currentParent){
+                currentParent = {
+                    children: []
+                };
+            }
+            console.log(parseText(text), "打印文本 text")
             if(expression == parseText(text)) {
                 currentParent.children.push({
                     type: 2,
@@ -113,9 +127,12 @@ function parseHTML() {
                     text
                 })
             }
+
             continue;
         }
+        // html = null;
     }
+    
 }
 
 function parseStartTag() {
@@ -137,6 +154,7 @@ function parseStartTag() {
                 value: attr[3]
             })
         }
+        // console.log(attribute)
 
         if (end) {
             match.unarySlash = end[1];
@@ -146,6 +164,8 @@ function parseStartTag() {
             return match;
         }
     }
+
+    return {};
 }
 
 function parseEndTag (tagName) {
@@ -163,7 +183,8 @@ function parseEndTag (tagName) {
 }
 
 function parseText (text) {
-    if(!defaultTagRE.text(text)) return;
+    console.log(text, "parse Text 格式化文本")
+    if(!defaultTagRE.test(text)) return;
 
     const tokens = [];
     let lastIndex = defaultTagRE.lastIndex = 0;
@@ -186,6 +207,48 @@ function parseText (text) {
     return tokens.join('+');
 }
 
+/* 从le的attrsMap属性或者attrsList中获取name对应的值 */
+function getAndRemoveAttr (el, name) {
+    let val;
+    if ((val = el.attrsMap[name]) != null){
+        const list = el.attrsList;
+        for (let i = 0, l = list.length; i < l; i++){
+            if (list[i].name === name){
+                list.splice(i, 1);
+                break;
+            }
+        }
+    }
+
+    return val;
+}
+
+function processFor (el) {
+    let exp;
+    if ((exp = getAndRemoveAttr(el, "v-for")) != null){
+        
+        /* const inMatch = exp.match(forAliasRE)；
+        el.for = inMatch[2].trim();
+        el.alias = inMatch[1].trim(); */
+    }
+    console.log(exp)
+}
+
+function processIf (el) {
+    const exp = getAndRemoveAttr(el, 'v-if');
+    if(exp) {
+        el.if = exp;
+        if (!el.ifConditions) {
+            el.ifConditions = [];
+        }
+
+        el.ifConditions.push({
+            exp: exp,
+            block: el
+        });
+    }
+}
+
 /* 将attrs转换成map格式 */
 function makeAttrsMap (attrs) {
     const map = {}
@@ -199,3 +262,5 @@ function makeAttrsMap (attrs) {
 const stack = [];
 /* currentParent 存放当前标签的父标签节点引用， root指向根标签节点 */
 let currentParent, root;
+
+parseHTML()
