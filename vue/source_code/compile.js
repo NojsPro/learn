@@ -38,7 +38,7 @@ const defaultTagRE = /\{\{((?:.|\n)+?)\}\}/g;
 const forAliasRE = /(.*?)\s+(?:in|of)\s+(.*)/;
 
 let index = 0;
-let html = `<div v-for="item in list" v-if="show"><span>{{item}}-{{test}}</span></div>`;
+let html = `<div v-for="item in list" class="one" v-if="show"><span>{{item}}-{{test}}</span></div>`;
 
 /* 移去已经匹配的内容 */
 function advance(n) {
@@ -75,7 +75,7 @@ function parseHTML() {
                     }
                 }
                 */
-                console.log( "打印文本 tag", startTagMatch)
+                // console.log( "打印文本 tag", startTagMatch)
                 const element = {
                     type: 1,
                     tag: startTagMatch.tagName,
@@ -157,7 +157,7 @@ function parseStartTag() {
                 value: attr[3]
             })
 
-            console.log("come in", match)
+            // console.log("come in", match)
         }
         // console.log(html.match(startTagClose), "parseStartTag startTagClose", html)
 
@@ -215,7 +215,7 @@ function parseText (text) {
 /* 从le的attrsMap属性或者attrsList中获取name对应的值 */
 function getAndRemoveAttr (el, name) {
     let val;
-    console.log("getAndRemoveAttr 获取name对应的值", el.attrsMap[name])
+    // console.log("getAndRemoveAttr 获取name对应的值", el.attrsMap[name])
     if ((val = el.attrsMap[name])){
         const list = el.attrsList;
         for (let i = 0, l = list.length; i < l; i++){
@@ -233,7 +233,7 @@ function processFor (el) {
 
     let exp;
     if ((exp = getAndRemoveAttr(el, "v-for")) != null){
-        console.log("==========process for==========")
+        // console.log("==========process for==========")
         const inMatch = exp.match(forAliasRE);
         el.for = inMatch[2].trim();
         el.alias = inMatch[1].trim();
@@ -244,7 +244,7 @@ function processFor (el) {
 function processIf (el) {
     const exp = getAndRemoveAttr(el, 'v-if');
     if(exp) {
-        console.log("==========process if==========")
+        // console.log("==========process if==========")
         el.if = exp;
         if (!el.ifConditions) {
             el.ifConditions = [];
@@ -271,6 +271,129 @@ const stack = [];
 /* currentParent 存放当前标签的父标签节点引用， root指向根标签节点 */
 let currentParent, root;
 
+function isStatic (node) {
+    if(node.type === 2) {
+        return false;
+    }
+    if (node.type == 3) {
+        return true;
+    }
+
+    return (!node.if && !node.for);
+}
+
+function markStatic (node) {
+    node.static = isStatic(node);
+    if(node.type === 1) {
+        for (let i = 0, l = node.children.length; i < l; i ++) {
+            const child = node.children[i];
+            markStatic(child);
+            if(!child.static) {
+                node.static = false;
+            }
+        }
+    }
+}
+
+function markStaticRoots (node) {
+    if(node.type === 1) {
+        if (node.static && node.children.length && !(
+            node.children.length === 1 && 
+            node.children[0].type === 3 
+        )){
+            node.staticRoot = true;
+            return;
+        } else {
+
+            node.staticRoot = false;
+        }
+    }
+}
+
+function optimize (rootAst) {
+    markStatic(rootAst);
+    markStaticRoots(rootAst);
+}
+
+
+function renderList (val, render) {
+    let ret = new Array(val.length);
+    for (i = 0, l = val.length; i < l; i++){
+        ret[i] = render(val[i], i);
+    }
+}
+
+function genIf (el) {
+    el.ifProcessed = true;
+    if(!el.ifConditions.length) {
+        return '_e()';
+    }
+    
+    return `(${el.ifConditions[0].exp})?${genElement(el.ifConditions[0].block)}: _e()`
+}
+
+function genFor (el) {
+    el.forProcessed = true;
+
+    const exp = el.for;
+    const alias = el.alias;
+    const iterator1 = el.iterator1 ? `,${el.iterator1}` : '';
+    const iterator2 = el.iterator2 ? `,${el.iterator2}` : '';
+
+    return `_l((${exp}),` +
+           `function(${alias}${iterator1}${iterator2}){`+
+           `retrun ${genElement(el)}` +
+           '})';
+}
+
+function genText (el) {
+    return `_v(${el.expression})`
+}
+
+function genNode (el) {
+    if (el.type === 1) {
+        return genElement(el);
+    } else {
+        return genText(el);
+    }
+}
+
+function genChildren (el) {
+    const children = el.children;
+    if (children && children.length > 0) {
+        return `${children.map(genNode).join(',')}`;
+    }
+}
+
+function genElement (el = {}) {
+    if (el.if && !el.ifProcessed) {
+        return genIf(el);
+    } else if (el.for && !el.forProcessed) {
+        return genFor(el);
+    } else {
+        const children = genChildren(el);
+        let code;
+        code = `_c('${el.tag}', '{
+            staticClass: ${el.attrsMap && el.attrsMap[':class']},
+            class: ${el.attrsMap && el.attrsMap['class']},
+        }${
+            children ? `,${children}` : ''
+        })`
+
+        return code;
+    }
+}
+
+function generate (rootAst) {
+    const code = rootAst ? genElement(rootAst) : '_c("div")';
+    return {
+        render: `with(this){return ${code}}`
+    }
+}
+
 parseHTML()
 console.log("========= parse html ===========")
 console.log(root)
+console.log("========= generate ===========")
+console.log(generate(root))
+
