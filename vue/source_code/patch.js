@@ -167,22 +167,24 @@ function updateChildren (parentElm, oldCh, newCh) {
     let oldKeyToIdx, idxInOld, elmToMove, refElm;
     // 循环过程中 oldStartIdx, newStartIdx,newEndIdx和oldEndIdx会逐渐向中间靠拢
     while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
-        if(!oldStartVnode) {
+        if(!oldStartVnode) { // 如果oldStartVnode不存在，就往后挪一位
             oldStartVnode = oldCh[++oldStartIdx];
-        } else if (!oldEndVnode) {
+        } else if (!oldEndVnode) { // 如果oldEndVnode不存在，往前一位
             oldEndVnode = oldCh[--oldEndIdx];
-        } else if (sameVnode(oldStartVnode, newStartVnode)){
+        } else if (sameVnode(oldStartVnode, newStartVnode)){ // 如果oldStartVnode与newStartVnode相同，就对比差异，更新视图
             patchVnode(oldStartVnode, newStartVnode);
-            oldStartVnode = oldCh[++oldStartIdx];
-            newStartVnode = newCh[++newStartIdx];
+            oldStartVnode = oldCh[++oldStartIdx]; // 往后挪一位
+            newStartVnode = newCh[++newStartIdx]; // 往后挪一位
+        // 拿最新的最后一个节点和旧的第一个节点对比，如果相同就把旧的第一个节点放到旧节点列表最后
         } else if (sameVnode(oldStartVnode, newEndVnode)){
             patchVnode(oldStartVnode, newEndVnode);
             nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm));
             oldStartVnode = oldCh[++oldStartIdx];
             newEndVnode = newCh[--newEndIdx];
+        // 拿旧的最后一个节点和新的第一个节点对比，如果相同就把旧的最后一个节点放到旧节点列表第一
         } else if (sameVnode(oldEndVnode, newStartVnode)){
             patchVnode(oldStartVnode, newEndVnode);
-            nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm));
+            nodeOps.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm);
             oldStartVnode = oldCh[++oldStartIdx];
             newStartVnode = newCh[++newStartIdx];
         } else {
